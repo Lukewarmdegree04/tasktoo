@@ -7,49 +7,94 @@ import java.util.*;
 public class XMLReader{
     public static void main(String[] args) {
         if (args.length == 0) {
-            System.out.println("Please specify the fields to output in JSON. Example:");
-            System.out.println("java XMLToJsonSelector name country address");
+            System.out.println("❗ Please specify the fields to output in JSON. Example:");
+            System.out.println("   java XMLToJsonValidator name country address");
             return;
         }
 
         List<String> selectedFields = Arrays.asList(args);
 
         try {
-            File xmlFile = new File("data.xml"); // Adjust if needed
+            File xmlFile = new File("data.xml");
+            if (!xmlFile.exists() || !xmlFile.isFile()) {
+                System.out.println("❗ Error: 'data.xml' file not found.");
+                return;
+            }
+
             DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
             DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
-            Document doc = dBuilder.parse(xmlFile);
-            doc.getDocumentElement().normalize();
+            Document doc;
 
+            try {
+                doc = dBuilder.parse(xmlFile);
+            } catch (Exception parseException) {
+                System.out.println("❗ Error parsing XML file. Make sure it's well-formed.");
+                return;
+            }
+
+            doc.getDocumentElement().normalize();
             NodeList recordList = doc.getElementsByTagName("record");
 
-            System.out.println("["); // Begin JSON array
+            if (recordList.getLength() == 0) {
+                System.out.println("⚠️ No <record> elements found in XML.");
+                return;
+            }
 
-            for (int i = 0; i < recordList.getLength(); i++) {
-                Node recordNode = recordList.item(i);
+            Set<String> foundFields = getAvailableFields((Element) recordList.item(0));
+            List<String> validFields = new ArrayList<>();
+            List<String> invalidFields = new ArrayList<>();
 
-                if (recordNode.getNodeType() == Node.ELEMENT_NODE) {
-                    Element record = (Element) recordNode;
-
-                    Map<String, String> jsonMap = new LinkedHashMap<>();
-                    for (String field : selectedFields) {
-                        String value = getTagValue(field, record);
-                        jsonMap.put(field, value);
-                    }
-
-                    System.out.print("  " + toJsonObject(jsonMap));
-                    if (i < recordList.getLength() - 1) {
-                        System.out.print(",");
-                    }
-                    System.out.println();
+            for (String field : selectedFields) {
+                if (foundFields.contains(field)) {
+                    validFields.add(field);
+                } else {
+                    invalidFields.add(field);
                 }
             }
 
-            System.out.println("]"); // End JSON array
+            if (validFields.isEmpty()) {
+                System.out.println("❗ None of the specified fields are valid. Available fields: " + foundFields);
+                return;
+            }
+
+            if (!invalidFields.isEmpty()) {
+                System.out.println("⚠️ Warning: The following fields do not exist and will be ignored: " + invalidFields);
+            }
+
+            System.out.println("["); // JSON array start
+
+            for (int i = 0; i < recordList.getLength(); i++) {
+                Element record = (Element) recordList.item(i);
+                Map<String, String> jsonMap = new LinkedHashMap<>();
+
+                for (String field : validFields) {
+                    jsonMap.put(field, getTagValue(field, record));
+                }
+
+                System.out.print("  " + toJsonObject(jsonMap));
+                if (i < recordList.getLength() - 1) {
+                    System.out.print(",");
+                }
+                System.out.println();
+            }
+
+            System.out.println("]"); // JSON array end
 
         } catch (Exception e) {
-            e.printStackTrace();
+            System.out.println("❗ Unexpected error: " + e.getMessage());
         }
+    }
+
+    private static Set<String> getAvailableFields(Element record) {
+        NodeList children = record.getChildNodes();
+        Set<String> fieldNames = new HashSet<>();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node node = children.item(i);
+            if (node.getNodeType() == Node.ELEMENT_NODE) {
+                fieldNames.add(node.getNodeName());
+            }
+        }
+        return fieldNames;
     }
 
     private static String getTagValue(String tag, Element element) {
